@@ -7,149 +7,90 @@
 #include <functional>
 
 
-void MapReduce::execute()
+
+void MapReduce::execute(const std::string& filenameIn, const std::string& filenameOut, 
+                        size_t countMaps, size_t countReduces, 
+                        Func_map func_map, Func_reduce func_reduce)
 {
-    //------- split ------------
-    std::cout << "execute::split\n";
-    std::vector<size_t> list_pos;
-    list_pos.resize(countMap_ + 1);
-    split(filenameIn_, list_pos);
+    //------- input splits ------------
+    std::vector<size_t> list_pos;       // список начала позиций откуда надо читать информацию
+    list_pos.resize(countMaps + 1);     // +1 - добавляем размер файла
+    {
+        std::ifstream ifs(filenameIn, std::ios::ate);
+        size_t sizeFile = ifs.tellg();      // размер файла
 
-    
-    std::cout << "execute::start_map\n";
-    std::vector<std::list<std::string>> lists_map;
-    lists_map.resize(countMap_);
-    map(list_pos, lists_map);
-
-
-    std::cout << "execute::start_shuffle\n";
-    std::vector<std::list<std::string>> lists_reduceIn;
-    lists_reduceIn.resize(countReduce_);    
-    shuffle(lists_map, lists_reduceIn);
-    
-    std::cout << "execute::start_reduce\n";
-    std::vector<std::list<std::string>> lists_reduceOut;
-    lists_reduceOut.resize(countReduce_);    
-    reduce(lists_reduceIn, lists_reduceOut);
-
-    std::cout << "execute::exit\n";
-}
-
-
-void work_reduce(size_t i, std::list<std::string>& list_reduceIn, std::list<std::string>& list_reduceOut) 
-{
-    std::cout << "thread_reduce: " << i << std::endl;
-    // std::sort(list_reduce.begin(), list_reduce.end());
-    list_reduceIn.sort();
-
-    size_t repeat = 1;
-    auto it1 = list_reduceIn.begin();
-    auto it2 = it1;
-    it2++;
-    for (; it2 != list_reduceIn.end(); ++it1, ++it2) {
-        if (*it1 == *it2) repeat++;
-        else 
-            list_reduceOut.push_back(*it1);// + " " + std::to_string(repeat));
-    }
-
-
-    int kk = 0;
-    for (auto& it : list_reduceIn) {
-        for (auto& str : it)
-            std::cout << str << std::endl;
-    }    
-
-
-    int kk = 0;
-    for (auto& it : list_reduceOut) {
-        for (auto& str : it)
-            std::cout << str << std::endl;
-    }    
-}
-
-
-void work_map(size_t n, size_t i, std::ifstream&& in, size_t endPos, std::list<std::string>& list_map) 
-{
-    size_t count = 0;
-    while (in.tellg() < endPos - 1) {
-        std::string str;
-        in >> str;
-        
-        count++;
-        if (str.size() < n) continue;
-        str.erase(n);
-        std::transform(str.begin(), str.end(), str.begin(), ::tolower);
-        list_map.push_back(std::move(str));
-
-        // std::cout << i << ": " << count << ": " << str << std::endl;
-    }
-    std::cout << "thread_map: " << i << std::endl;
-    in.close();
-}
-
-
-void MapReduce::split(const std::string &fn, std::vector<size_t> &list_pos)
-{
-    std::ifstream ifs(fn, std::ios::ate);
-    size_t sizeFile = ifs.tellg();
-    std::cout << "split: " << sizeFile << std::endl;
-
-    size_t sizeMap = sizeFile / (list_pos.size() - 1);
-    ifs.seekg(0);
-    for (int i = 0; i < list_pos.size() - 1; ++i) {
-        if (i != 0) {
-            ifs.seekg(sizeMap*i - 1);
-            while (ifs.peek() != '\n') {
+        size_t sizePart = sizeFile / countMaps;  // размер части файла
+        ifs.seekg(0);
+        for (int i = 0; i < list_pos.size() - 1; ++i) {
+            if (i != 0) {                   // выравниваем по переносу строки
+                ifs.seekg(sizePart*i - 1);
+                while (ifs.peek() != '\n')  
+                    ifs.seekg(static_cast<size_t>(ifs.tellg()) + 1);
                 ifs.seekg(static_cast<size_t>(ifs.tellg()) + 1);
-            }
-            ifs.seekg(static_cast<size_t>(ifs.tellg()) + 1);
-        } 
-        list_pos[i] = ifs.tellg();
-    }
-    list_pos[list_pos.size()-1] = sizeFile;
-}
-
-
-void MapReduce::map(std::vector<size_t>& list_pos, std::vector<std::list<std::string>> &list_map)
-{
-    std::list<std::thread> threads;
-    for (size_t i = 0; i < list_map.size(); ++i) {
-        auto ss = std::ifstream(filenameIn_);
-        ss.seekg(list_pos[i]);
-        
-        threads.emplace_back(work_map, 1, i, std::move(ss), list_pos[i+1], std::ref(list_map[i]));
+            } 
+            list_pos[i] = ifs.tellg();
+        }
+        list_pos[countMaps] = sizeFile;    
     }
 
-    for (auto& el: threads) {
-        el.join();
-    }
-}
 
-
-void MapReduce::shuffle(std::vector<std::list<std::string>> &list_map, std::vector<std::list<std::string>>& list_reduce)
-{
-    size_t countReduce = list_reduce.size();
-    size_t partReduce = (static_cast<size_t>(0) - 1) / countReduce;
-    for (auto& it: list_map) {
-        for (auto& str: it) {
-            size_t hash = std::hash<std::string>{}(str);
-            size_t numberReduce = hash / partReduce;
-            if (numberReduce >= countReduce) 
-                numberReduce = countReduce - 1;
-            list_reduce[numberReduce].push_back(str);
+    //------- mapping ------------
+    // std::cout << "---- mapping ---\n";
+    std::vector<TypeList> lists_map;  
+    lists_map.resize(countMaps);
+    {
+        std::list<ReaderFile> list_readers;
+        std::list<std::thread> threads;
+        for (size_t i = 0; i < countMaps; ++i) {
+            list_readers.emplace_back(filenameIn, list_pos[i], list_pos[i+1]);
+            threads.emplace_back(func_map, std::ref(list_readers.back()),/*i, std::move(ss), list_pos[i+1],*/ std::ref(lists_map[i]));
+        }
+        for (auto& el: threads) {
+            el.join();
         }
     }
-}
 
 
-void MapReduce::reduce(std::vector<std::list<std::string>> &list_reduceIn, std::vector<std::list<std::string>> &list_reduceOut)
-{
-    std::list<std::thread> threads;
-    for (size_t i = 0; i < list_reduceIn.size(); ++i) {
-        threads.emplace_back(work_reduce, i, std::ref(list_reduceIn[i]), std::ref(list_reduceOut[i]));
+    //------- shuffling ------------
+    // std::cout << "---- shuffling ---\n";
+    std::vector<TypeList> lists_reduceIn;      
+    lists_reduceIn.resize(countReduces);
+    {    
+        size_t sizePartReduce = (static_cast<size_t>(0) - 1) / countReduces;
+        for (auto& it: lists_map) {
+            for (auto& str: it) {
+                size_t hash = std::hash<std::string>{}(str);
+                size_t numberReduce = hash / sizePartReduce;
+                if (numberReduce >= countReduces) 
+                    numberReduce = countReduces - 1;
+                lists_reduceIn[numberReduce].push_back(str);
+            }
+        }
     }
 
-    for (auto& el: threads) {
-        el.join();
+
+    //------- reducer ------------
+    // std::cout << "---- reducer ---\n";
+    std::vector<TypeList> lists_reduceOut;
+    lists_reduceOut.resize(countReduces);    
+    {
+        std::list<std::thread> threads;
+        for (size_t i = 0; i < lists_reduceIn.size(); ++i) {
+            threads.emplace_back(func_reduce, std::ref(lists_reduceIn[i]), std::ref(lists_reduceOut[i]));
+        }
+
+        for (auto& el: threads) {
+            el.join();
+        }
     }
+
+
+    //------- final out ------------
+    // std::cout << "---- final out ---\n";
+    std::ofstream ofile(filenameOut);
+    for(auto& it : lists_reduceOut) {
+        for (auto& str: it) 
+            ofile << str << std::endl;
+    }
+    ofile.close();
 }
