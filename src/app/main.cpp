@@ -73,7 +73,7 @@ int main(int argc, const char* argv[])
             countReduces = std::stoi(argv[3]);
         }
         catch(...) {
-            std::cout << "Неверное значение в параметрах\n";
+            std::cout << "Ошибка в параметрах\n";
             return 1;
         }
     }
@@ -87,6 +87,7 @@ int main(int argc, const char* argv[])
         std::cout << "Файл не найден\n";
         return 2;
     }
+
 
     using namespace std::placeholders;
 
