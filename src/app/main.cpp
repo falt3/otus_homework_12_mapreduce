@@ -8,6 +8,12 @@
 namespace fs = std::filesystem;
 
 
+/**
+ * @brief Функция отображения
+ * @param prefix    размер префикса
+ * @param reader    объект для получения входных данных (строк)
+ * @param list_map  результирующий список строк после обработки данных
+ */
 void func_map(size_t prefix, IReader& reader, MapReduce::TypeList& list_map) 
 {
     while (true) {
@@ -22,6 +28,11 @@ void func_map(size_t prefix, IReader& reader, MapReduce::TypeList& list_map)
 }
 
 
+/**
+ * @brief Функция свертки
+ * @param list_reduceIn     список строк на входе функции свертки
+ * @param list_reduceOut    результирующий список строк функции свертки
+ */
 void func_reduce(MapReduce::TypeList& list_reduceIn, MapReduce::TypeList& list_reduceOut) 
 {
     if (list_reduceIn.size() == 0) return;
@@ -50,7 +61,7 @@ void func_reduce(MapReduce::TypeList& list_reduceIn, MapReduce::TypeList& list_r
 
 int main(int argc, const char* argv[])
 {
-    std::string fnIn = "../tests/in2.txt";
+    std::string fnIn;
     std::string fnOut = "outreduce.txt";
     size_t countMaps = 1;
     size_t countReduces = 2;
@@ -66,7 +77,7 @@ int main(int argc, const char* argv[])
             return 1;
         }
     }
-    else if (argc != 1) {
+    else {
         std::cout << "Неверное количество параметров\n";
         return 1;
     }
@@ -90,16 +101,18 @@ int main(int argc, const char* argv[])
         size_t countItems = 0;
         std::ifstream ifile(fnOut);
         if (ifile.is_open()) {
-            while (!ifile.eof()) {
+            std::string line;    
+            while (std::getline(ifile, line) && !line.empty()) { 
+                std::istringstream iss(line);
                 std::string str;
                 size_t n = 0;
-                ifile >> str >> n;
+                iss >> str >> n;
                 if (n != 0) countItems++;
                 if (n > 1) {
                     res = false;
                     break;
-                }
-            }
+                }            
+            }            
             ifile.close();
         }
 
@@ -108,7 +121,7 @@ int main(int argc, const char* argv[])
             break;
         }
         else if (res) {
-            std::cout << "Префикс = " << prefix << std::endl;                
+            std::cout << "Prefix = " << prefix << std::endl;                
             break;
         }
         else 

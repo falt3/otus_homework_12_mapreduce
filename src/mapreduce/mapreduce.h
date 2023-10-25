@@ -17,9 +17,13 @@ struct ReaderFile : public IReader {
         endPos_(endPos) 
     {
         ifile_.open(filename);
-        ifile_.seekg(startPos);
+        if (ifile_.is_open())
+            ifile_.seekg(startPos);
     };
-    // ReaderFile(ReaderFile&& other) {}
+    ~ReaderFile() {
+        if (ifile_.is_open())
+            ifile_.close();
+    }
     std::string getData() override {
         std::string str;
         while (ifile_.tellg() < endPos_ - 1) {

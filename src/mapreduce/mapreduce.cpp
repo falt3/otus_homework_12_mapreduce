@@ -7,7 +7,16 @@
 #include <functional>
 
 
-
+/**
+ * @brief Функция mapreduce
+ * 
+ * @param filenameIn    название файла с исходными данными 
+ * @param filenameOut   название файла, куда будут записаны результирующий данные 
+ * @param countMaps     количество потоков для работы отображения
+ * @param countReduces  количество потоков для работы свертки
+ * @param func_map      функция отображения
+ * @param func_reduce   функция свертки
+ */
 void MapReduce::execute(const std::string& filenameIn, const std::string& filenameOut, 
                         size_t countMaps, size_t countReduces, 
                         Func_map func_map, Func_reduce func_reduce)
@@ -21,12 +30,12 @@ void MapReduce::execute(const std::string& filenameIn, const std::string& filena
 
         size_t sizePart = sizeFile / countMaps;  // размер части файла
         ifs.seekg(0);
-        for (int i = 0; i < list_pos.size() - 1; ++i) {
+        for (int i = 0; i < countMaps; ++i) {
             if (i != 0) {                   // выравниваем по переносу строки
                 ifs.seekg(sizePart*i - 1);
                 while (ifs.peek() != '\n')  
                     ifs.seekg(static_cast<size_t>(ifs.tellg()) + 1);
-                ifs.seekg(static_cast<size_t>(ifs.tellg()) + 1);
+                ifs.seekg(static_cast<size_t>(ifs.tellg()) + 1);    // следущий символ после переноса строки
             } 
             list_pos[i] = ifs.tellg();
         }
@@ -35,7 +44,6 @@ void MapReduce::execute(const std::string& filenameIn, const std::string& filena
 
 
     //------- mapping ------------
-    // std::cout << "---- mapping ---\n";
     std::vector<TypeList> lists_map;  
     lists_map.resize(countMaps);
     {
@@ -43,7 +51,7 @@ void MapReduce::execute(const std::string& filenameIn, const std::string& filena
         std::list<std::thread> threads;
         for (size_t i = 0; i < countMaps; ++i) {
             list_readers.emplace_back(filenameIn, list_pos[i], list_pos[i+1]);
-            threads.emplace_back(func_map, std::ref(list_readers.back()),/*i, std::move(ss), list_pos[i+1],*/ std::ref(lists_map[i]));
+            threads.emplace_back(func_map, std::ref(list_readers.back()), std::ref(lists_map[i]));
         }
         for (auto& el: threads) {
             el.join();
@@ -52,7 +60,6 @@ void MapReduce::execute(const std::string& filenameIn, const std::string& filena
 
 
     //------- shuffling ------------
-    // std::cout << "---- shuffling ---\n";
     std::vector<TypeList> lists_reduceIn;      
     lists_reduceIn.resize(countReduces);
     {    
@@ -63,14 +70,14 @@ void MapReduce::execute(const std::string& filenameIn, const std::string& filena
                 size_t numberReduce = hash / sizePartReduce;
                 if (numberReduce >= countReduces) 
                     numberReduce = countReduces - 1;
-                lists_reduceIn[numberReduce].push_back(str);
+                lists_reduceIn[numberReduce].push_back(std::move(str));
             }
         }
     }
+    lists_map.clear();
 
 
     //------- reducer ------------
-    // std::cout << "---- reducer ---\n";
     std::vector<TypeList> lists_reduceOut;
     lists_reduceOut.resize(countReduces);    
     {
@@ -83,10 +90,10 @@ void MapReduce::execute(const std::string& filenameIn, const std::string& filena
             el.join();
         }
     }
+    lists_reduceIn.clear();
 
 
     //------- final out ------------
-    // std::cout << "---- final out ---\n";
     std::ofstream ofile(filenameOut);
     for(auto& it : lists_reduceOut) {
         for (auto& str: it) 
