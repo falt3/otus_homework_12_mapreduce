@@ -1,6 +1,9 @@
 cmake_minimum_required(VERSION 3.5)
 
-project(mapreduce CXX)
+set(PATCH_VERSION "0" CACHE INTERNAL "Patch version")
+set(PROJECT_VESRION 0.0.${PATCH_VERSION})
+
+project(mapreduce VERSION ${PROJECT_VESRION})
 
 add_subdirectory(src)
 
